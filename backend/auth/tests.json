@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Check session — no session id returns 401",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "check"},
+      "expectedStatus": 401,
+      "expectedBody": {"ok": false},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Login wrong password",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "username": "admin", "password": "wrongpassword"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Неверный логин или пароль"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

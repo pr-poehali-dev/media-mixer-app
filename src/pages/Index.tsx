@@ -205,33 +205,73 @@ function LibrarySection({ onPlay, uploadedFiles, onDeleteUploaded }: {
   );
 }
 
-function PlayerSection({ trackId }: { trackId: number }) {
+function PlayerSection({ trackId, uploadedFiles }: { trackId: number; uploadedFiles: UploadedFile[] }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState([0]);
   const [volume, setVolume] = useState([80]);
   const [activeTab, setActiveTab] = useState<SyncTab>("lyrics");
   const [currentTime, setCurrentTime] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const track = TRACKS.find(t => t.id === trackId) || TRACKS[0];
-  const totalSec = 222;
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const staticTrack = TRACKS.find(t => t.id === trackId);
+  const uploadedFile = uploadedFiles.find(f => f.id === trackId);
+  const isUploaded = !!uploadedFile;
+  const isVideo = uploadedFile?.fileType === "Видео";
+
+  const mediaRef = isVideo ? videoRef : audioRef;
+  const trackName = staticTrack?.title ?? uploadedFile?.name ?? "Неизвестно";
+  const trackArtist = staticTrack?.artist ?? uploadedFile?.fileType ?? "";
+  const trackGenre = staticTrack?.genre ?? "";
 
   useEffect(() => {
-    if (isPlaying) {
-      intervalRef.current = setInterval(() => {
-        setCurrentTime(prev => {
-          const next = prev + 1;
-          setProgress([Math.min((next / totalSec) * 100, 100)]);
-          return next > totalSec ? 0 : next;
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    setIsPlaying(false);
+    setProgress([0]);
+    setCurrentTime(0);
+  }, [trackId]);
+
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    el.volume = volume[0] / 100;
+  }, [volume, mediaRef]);
+
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    if (isPlaying) { el.play().catch(() => setIsPlaying(false)); }
+    else { el.pause(); }
+  }, [isPlaying, mediaRef]);
+
+  const handleTimeUpdate = () => {
+    const el = mediaRef.current;
+    if (!el || !el.duration) return;
+    setCurrentTime(el.currentTime);
+    setProgress([(el.currentTime / el.duration) * 100]);
+  };
+
+  const handleLoadedMetadata = () => {
+    const el = mediaRef.current;
+    if (el) setDuration(el.duration);
+  };
+
+  const handleSeek = (val: number[]) => {
+    const el = mediaRef.current;
+    if (el && el.duration) {
+      el.currentTime = (val[0] / 100) * el.duration;
+      setProgress(val);
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isPlaying]);
+  };
+
+  const handleSkip = (sec: number) => {
+    const el = mediaRef.current;
+    if (el) { el.currentTime = Math.max(0, Math.min(el.currentTime + sec, el.duration || 0)); }
+  };
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   const activeLyricIdx = LYRICS.reduce((acc, l, i) => l.time <= currentTime ? i : acc, 0);
-
   const tabs: { id: SyncTab; label: string }[] = [
     { id: "lyrics", label: "Текст" },
     { id: "chords", label: "Аккорды" },
@@ -242,39 +282,69 @@ function PlayerSection({ trackId }: { trackId: number }) {
     <div className="animate-fade-in flex flex-col h-full">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-semibold mb-1">{track.title}</h2>
-          <p className="text-muted-foreground">{track.artist}</p>
+          <h2 className="text-2xl font-semibold mb-1 truncate max-w-xs">{trackName}</h2>
+          <p className="text-muted-foreground">{trackArtist}</p>
         </div>
-        <div className="flex items-center gap-1 bg-secondary rounded-full px-2 py-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow"></span>
-          <span className="text-xs text-muted-foreground">{track.genre}</span>
-        </div>
+        {trackGenre && (
+          <div className="flex items-center gap-1 bg-secondary rounded-full px-2 py-1 flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-glow"></span>
+            <span className="text-xs text-muted-foreground">{trackGenre}</span>
+          </div>
+        )}
       </div>
 
+      {isUploaded && uploadedFile.url && (
+        isVideo ? (
+          <video
+            ref={videoRef}
+            src={uploadedFile.url}
+            className="w-full rounded-2xl mb-4 max-h-48 bg-black object-contain"
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onEnded={() => setIsPlaying(false)}
+          />
+        ) : (
+          <audio
+            ref={audioRef}
+            src={uploadedFile.url}
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onEnded={() => setIsPlaying(false)}
+          />
+        )
+      )}
+
       <div className="bg-card rounded-2xl p-6 mb-6 flex flex-col items-center gap-4 border border-border">
-        <WaveformVisualizer isPlaying={isPlaying} />
+        {!isVideo && <WaveformVisualizer isPlaying={isPlaying} />}
 
         <div className="w-full">
           <Slider
             value={progress}
-            onValueChange={setProgress}
+            onValueChange={isUploaded ? handleSeek : setProgress}
             max={100}
             step={0.1}
             className="w-full"
           />
           <div className="flex justify-between mt-1">
+            <span className="text-xs text-muted-foreground font-mono">{formatTime(currentTime)}</span>
             <span className="text-xs text-muted-foreground font-mono">
-              {Math.floor(currentTime / 60)}:{String(currentTime % 60).padStart(2, "0")}
+              {isUploaded && duration > 0 ? formatTime(duration) : (staticTrack?.duration ?? "0:00")}
             </span>
-            <span className="text-xs text-muted-foreground font-mono">{track.duration}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
-          <button className="text-muted-foreground hover:text-foreground transition-colors">
-            <Icon name="Shuffle" size={18} />
+          <button
+            onClick={() => handleSkip(-10)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title="−10 сек"
+          >
+            <Icon name="RotateCcw" size={18} />
           </button>
-          <button className="text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            onClick={() => handleSkip(-5)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
             <Icon name="SkipBack" size={22} />
           </button>
           <button
@@ -283,17 +353,25 @@ function PlayerSection({ trackId }: { trackId: number }) {
           >
             <Icon name={isPlaying ? "Pause" : "Play"} size={24} />
           </button>
-          <button className="text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            onClick={() => handleSkip(5)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
             <Icon name="SkipForward" size={22} />
           </button>
-          <button className="text-muted-foreground hover:text-foreground transition-colors">
-            <Icon name="Repeat" size={18} />
+          <button
+            onClick={() => handleSkip(10)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title="+10 сек"
+          >
+            <Icon name="RotateCw" size={18} />
           </button>
         </div>
 
         <div className="flex items-center gap-3 w-full max-w-xs">
-          <Icon name="Volume2" size={16} className="text-muted-foreground flex-shrink-0" />
+          <Icon name={volume[0] === 0 ? "VolumeX" : volume[0] < 50 ? "Volume1" : "Volume2"} size={16} className="text-muted-foreground flex-shrink-0" />
           <Slider value={volume} onValueChange={setVolume} max={100} className="flex-1" />
+          <span className="text-xs text-muted-foreground font-mono w-6 text-right">{volume[0]}</span>
         </div>
       </div>
 
@@ -697,29 +775,123 @@ const SECTION_TITLES: Record<Section, string> = {
   settings: "Настройки",
 };
 
+const AUTH_URL = "https://functions.poehali.dev/cbe56900-197a-4a06-93c1-cc9353c3bc59";
+
+function LoginScreen({ onLogin }: { onLogin: (username: string, sessionId: string) => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const res = await fetch(AUTH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "login", username, password }),
+    });
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) { setError(data.error || "Ошибка входа"); return; }
+    localStorage.setItem("sessionId", data.sessionId);
+    onLogin(data.username, data.sessionId);
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center font-golos px-4">
+      <div className="w-full max-w-sm animate-fade-in">
+        <div className="flex justify-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center shadow-lg shadow-accent/20">
+            <Icon name="Music" size={28} className="text-accent-foreground" />
+          </div>
+        </div>
+        <h1 className="text-2xl font-semibold text-center mb-1">Нота</h1>
+        <p className="text-muted-foreground text-sm text-center mb-8">Вход для администраторов</p>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <input
+              type="text"
+              placeholder="Логин"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              className="w-full bg-card border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-colors"
+            />
+          </div>
+          <div>
+            <input
+              type="password"
+              placeholder="Пароль"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full bg-card border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-colors"
+            />
+          </div>
+          {error && <p className="text-destructive text-xs">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-accent text-accent-foreground rounded-xl py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {loading ? "Вход..." : "Войти"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Index() {
   const [section, setSection] = useState<Section>("library");
   const [prevSection, setPrevSection] = useState<Section | null>(null);
   const [activeTrackId, setActiveTrackId] = useState(1);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [adminUser, setAdminUser] = useState<string | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
 
-  const handleFilesAdded = (files: UploadedFile[]) => {
-    setUploadedFiles(prev => [...prev, ...files]);
-  };
-
-  const handleFileRemove = (id: number) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== id));
-  };
+  useEffect(() => {
+    const sid = localStorage.getItem("sessionId");
+    if (!sid) return;
+    fetch(AUTH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Session-Id": sid },
+      body: JSON.stringify({ action: "check" }),
+    }).then(r => r.json()).then(d => {
+      if (d.ok) setAdminUser(d.username);
+      else localStorage.removeItem("sessionId");
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
   }, [theme]);
+
+  const handleLogin = (username: string) => {
+    setAdminUser(username);
+    setShowLogin(false);
+  };
+
+  const handleLogout = async () => {
+    const sid = localStorage.getItem("sessionId");
+    if (sid) {
+      await fetch(AUTH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Session-Id": sid },
+        body: JSON.stringify({ action: "logout" }),
+      });
+      localStorage.removeItem("sessionId");
+    }
+    setAdminUser(null);
+    if (section === "upload") setSection("library");
+  };
+
+  const handleFilesAdded = (files: UploadedFile[]) => setUploadedFiles(prev => [...prev, ...files]);
+  const handleFileRemove = (id: number) => setUploadedFiles(prev => prev.filter(f => f.id !== id));
 
   const handlePlay = (id: number) => {
     setActiveTrackId(id);
@@ -728,6 +900,7 @@ export default function Index() {
   };
 
   const handleNav = (s: Section) => {
+    if (s === "upload" && !adminUser) { setShowLogin(true); return; }
     setPrevSection(null);
     setSection(s);
   };
@@ -737,8 +910,16 @@ export default function Index() {
     setPrevSection(null);
   };
 
-  const activeTrack = TRACKS.find(t => t.id === activeTrackId) || TRACKS[0];
+  const activeUploadedFile = uploadedFiles.find(f => f.id === activeTrackId);
+  const activeStaticTrack = TRACKS.find(t => t.id === activeTrackId);
+  const activeTitle = activeStaticTrack?.title ?? activeUploadedFile?.name ?? "...";
   const showBack = section !== "library";
+
+  const visibleNavItems = NAV_ITEMS.filter(item => item.id !== "upload" || adminUser);
+
+  if (showLogin) {
+    return <LoginScreen onLogin={(u, _sid) => handleLogin(u)} />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-golos">
@@ -746,10 +927,7 @@ export default function Index() {
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {showBack ? (
-              <button
-                onClick={handleBack}
-                className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <button onClick={handleBack} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
                 <Icon name="ArrowLeft" size={18} />
                 <span className="text-sm">{SECTION_TITLES[section]}</span>
               </button>
@@ -762,17 +940,26 @@ export default function Index() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary px-3 py-1.5 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"></span>
-            {activeTrack.title}
+          <div className="flex items-center gap-2">
+            {adminUser ? (
+              <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary px-3 py-1.5 rounded-full hover:text-destructive transition-colors">
+                <Icon name="LogOut" size={12} />
+                {adminUser}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary px-3 py-1.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"></span>
+                {activeTitle}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 max-w-2xl mx-auto w-full px-4 pt-24 pb-28">
         {section === "library" && <LibrarySection onPlay={handlePlay} uploadedFiles={uploadedFiles} onDeleteUploaded={handleFileRemove} />}
-        {section === "player" && <PlayerSection trackId={activeTrackId} />}
-        {section === "upload" && <UploadSection uploadedFiles={uploadedFiles} onFilesAdded={handleFilesAdded} onFileRemove={handleFileRemove} />}
+        {section === "player" && <PlayerSection trackId={activeTrackId} uploadedFiles={uploadedFiles} />}
+        {section === "upload" && adminUser && <UploadSection uploadedFiles={uploadedFiles} onFilesAdded={handleFilesAdded} onFileRemove={handleFileRemove} />}
         {section === "bookmarks" && <BookmarksSection onPlay={handlePlay} />}
         {section === "profile" && <ProfileSection />}
         {section === "settings" && <SettingsSection theme={theme} onThemeChange={setTheme} />}
@@ -781,20 +968,27 @@ export default function Index() {
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-t border-border">
         <div className="max-w-2xl mx-auto px-2 py-2">
           <div className="flex">
-            {NAV_ITEMS.map(item => (
+            {visibleNavItems.map(item => (
               <button
                 key={item.id}
                 onClick={() => handleNav(item.id)}
                 className={`flex-1 flex flex-col items-center gap-1 py-2 px-1 rounded-xl transition-all ${
-                  section === item.id
-                    ? "text-accent"
-                    : "text-muted-foreground hover:text-foreground"
+                  section === item.id ? "text-accent" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Icon name={item.icon} size={20} />
                 <span className="text-[10px] leading-none">{item.label}</span>
               </button>
             ))}
+            {!adminUser && (
+              <button
+                onClick={() => setShowLogin(true)}
+                className="flex-1 flex flex-col items-center gap-1 py-2 px-1 rounded-xl transition-all text-muted-foreground hover:text-foreground"
+              >
+                <Icon name="LogIn" size={20} />
+                <span className="text-[10px] leading-none">Войти</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
