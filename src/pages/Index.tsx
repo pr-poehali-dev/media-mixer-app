@@ -300,12 +300,31 @@ function PlayerSection({ trackId }: { trackId: number }) {
 
 function UploadSection() {
   const [dragging, setDragging] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; size: string; type: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const types = [
     { icon: "Music", label: "Аудио", ext: "MP3, WAV, FLAC", color: "text-accent" },
     { icon: "Video", label: "Видео", ext: "MP4, MOV", color: "text-blue-400" },
     { icon: "FileText", label: "Текст", ext: "TXT, PDF, DOCX", color: "text-yellow-400" },
     { icon: "Music2", label: "Ноты", ext: "MusicXML, PDF", color: "text-purple-400" },
   ];
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const newFiles = Array.from(files).map(f => ({
+      name: f.name,
+      size: f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} МБ` : `${(f.size / 1024).toFixed(0)} КБ`,
+      type: f.type.startsWith("audio") ? "Аудио" : f.type.startsWith("video") ? "Видео" : "Документ",
+    }));
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    handleFiles(e.dataTransfer.files);
+  };
 
   return (
     <div className="animate-fade-in">
@@ -314,25 +333,60 @@ function UploadSection() {
         <p className="text-muted-foreground text-sm">Добавьте аудио, видео, текст или ноты</p>
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="audio/*,video/*,.txt,.pdf,.docx,.xml"
+        className="hidden"
+        onChange={e => handleFiles(e.target.files)}
+      />
+
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={() => setDragging(false)}
-        className={`border-2 border-dashed rounded-2xl p-10 text-center mb-6 transition-all ${
-          dragging ? "border-accent bg-accent/5" : "border-border hover:border-muted-foreground"
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        className={`border-2 border-dashed rounded-2xl p-10 text-center mb-6 transition-all cursor-pointer ${
+          dragging ? "border-accent bg-accent/5" : "border-border hover:border-accent hover:bg-accent/5"
         }`}
       >
         <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center">
-            <Icon name="Upload" size={24} className="text-muted-foreground" />
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${dragging ? "bg-accent/20" : "bg-secondary"}`}>
+            <Icon name="Upload" size={24} className={dragging ? "text-accent" : "text-muted-foreground"} />
           </div>
         </div>
         <p className="font-medium mb-1">Перетащите файлы сюда</p>
         <p className="text-sm text-muted-foreground mb-4">или нажмите для выбора</p>
-        <button className="px-5 py-2 bg-accent text-accent-foreground rounded-full text-sm font-medium hover:opacity-90 transition-opacity">
+        <span className="inline-block px-5 py-2 bg-accent text-accent-foreground rounded-full text-sm font-medium hover:opacity-90 transition-opacity">
           Выбрать файлы
-        </button>
+        </span>
       </div>
+
+      {uploadedFiles.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl p-4 mb-6">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">Загружено</h3>
+          <div className="space-y-2">
+            {uploadedFiles.map((f, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                  <Icon name="FileCheck" size={14} className="text-accent" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{f.name}</p>
+                  <p className="text-xs text-muted-foreground">{f.type} · {f.size}</p>
+                </div>
+                <button
+                  onClick={() => setUploadedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <Icon name="X" size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         {types.map(type => (
