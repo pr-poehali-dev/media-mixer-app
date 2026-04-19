@@ -51,14 +51,26 @@ function WaveformVisualizer({ isPlaying }: { isPlaying: boolean }) {
 
 function LibrarySection({ onPlay }: { onPlay: (id: number) => void }) {
   const [filter, setFilter] = useState("all");
+  const [tracks, setTracks] = useState(TRACKS);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const genres = ["all", "Акустика", "Джаз", "Классика", "Электроника", "Фолк"];
-  const filtered = filter === "all" ? TRACKS : TRACKS.filter(t => t.genre === filter);
+  const filtered = filter === "all" ? tracks : tracks.filter(t => t.genre === filter);
+
+  const handleDelete = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmDelete === id) {
+      setTracks(prev => prev.filter(t => t.id !== id));
+      setConfirmDelete(null);
+    } else {
+      setConfirmDelete(id);
+    }
+  };
 
   return (
     <div className="animate-fade-in">
       <div className="mb-6">
         <h2 className="text-2xl font-semibold mb-1">Библиотека</h2>
-        <p className="text-muted-foreground text-sm">{TRACKS.length} треков</p>
+        <p className="text-muted-foreground text-sm">{tracks.length} треков</p>
       </div>
 
       <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide pb-1">
@@ -97,6 +109,17 @@ function LibrarySection({ onPlay }: { onPlay: (id: number) => void }) {
               {track.hasChords && <span className="text-xs text-accent bg-accent/10 px-1.5 py-0.5 rounded">аккорды</span>}
               {track.hasNotes && <span className="text-xs text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">ноты</span>}
               <span className="text-muted-foreground text-xs font-mono">{track.duration}</span>
+              <button
+                onClick={(e) => handleDelete(track.id, e)}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
+                  confirmDelete === track.id
+                    ? "bg-destructive text-destructive-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                }`}
+                title={confirmDelete === track.id ? "Нажмите ещё раз для подтверждения" : "Удалить"}
+              >
+                <Icon name={confirmDelete === track.id ? "Check" : "Trash2"} size={13} />
+              </button>
             </div>
           </div>
         ))}
@@ -499,26 +522,60 @@ const NAV_ITEMS: { id: Section; icon: string; label: string }[] = [
   { id: "settings", icon: "Settings", label: "Настройки" },
 ];
 
+const SECTION_TITLES: Record<Section, string> = {
+  library: "Библиотека",
+  player: "Плеер",
+  upload: "Загрузка",
+  bookmarks: "Закладки",
+  profile: "Профиль",
+  settings: "Настройки",
+};
+
 export default function Index() {
   const [section, setSection] = useState<Section>("library");
+  const [prevSection, setPrevSection] = useState<Section | null>(null);
   const [activeTrackId, setActiveTrackId] = useState(1);
 
   const handlePlay = (id: number) => {
     setActiveTrackId(id);
+    setPrevSection(section);
     setSection("player");
   };
 
+  const handleNav = (s: Section) => {
+    setPrevSection(null);
+    setSection(s);
+  };
+
+  const handleBack = () => {
+    setSection(prevSection ?? "library");
+    setPrevSection(null);
+  };
+
   const activeTrack = TRACKS.find(t => t.id === activeTrackId) || TRACKS[0];
+  const showBack = section !== "library";
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-golos">
       <div className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center">
-              <Icon name="Music" size={14} className="text-accent-foreground" />
-            </div>
-            <span className="font-semibold tracking-tight">Нота</span>
+            {showBack ? (
+              <button
+                onClick={handleBack}
+                className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Icon name="ArrowLeft" size={18} />
+                <span className="text-sm">{SECTION_TITLES[section]}</span>
+              </button>
+            ) : (
+              <>
+                <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center">
+                  <Icon name="Music" size={14} className="text-accent-foreground" />
+                </div>
+                <span className="font-semibold tracking-tight">Нота</span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary px-3 py-1.5 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"></span>
@@ -542,7 +599,7 @@ export default function Index() {
             {NAV_ITEMS.map(item => (
               <button
                 key={item.id}
-                onClick={() => setSection(item.id)}
+                onClick={() => handleNav(item.id)}
                 className={`flex-1 flex flex-col items-center gap-1 py-2 px-1 rounded-xl transition-all ${
                   section === item.id
                     ? "text-accent"
