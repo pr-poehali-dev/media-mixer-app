@@ -6,6 +6,15 @@ import { Switch } from "@/components/ui/switch";
 type Section = "library" | "player" | "upload" | "bookmarks" | "profile" | "settings";
 type SyncTab = "lyrics" | "chords" | "notes";
 
+type UploadedFile = {
+  id: number;
+  name: string;
+  size: string;
+  fileType: "Аудио" | "Видео" | "Текст" | "Ноты";
+  genre: string;
+  url?: string;
+};
+
 const TRACKS = [
   { id: 1, title: "Весенний вечер", artist: "Алексей Краснов", duration: "3:42", genre: "Хвалы", hasLyrics: true, hasChords: true, hasNotes: false },
   { id: 2, title: "Городской ритм", artist: "Море внутри", duration: "4:15", genre: "Хвалы", hasLyrics: true, hasChords: false, hasNotes: true },
@@ -49,12 +58,18 @@ function WaveformVisualizer({ isPlaying }: { isPlaying: boolean }) {
   );
 }
 
-function LibrarySection({ onPlay }: { onPlay: (id: number) => void }) {
+function LibrarySection({ onPlay, uploadedFiles, onDeleteUploaded }: {
+  onPlay: (id: number) => void;
+  uploadedFiles: UploadedFile[];
+  onDeleteUploaded: (id: number) => void;
+}) {
   const [filter, setFilter] = useState("all");
   const [tracks, setTracks] = useState(TRACKS);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [confirmDeleteUploaded, setConfirmDeleteUploaded] = useState<number | null>(null);
   const genres = ["all", "Хвалы", "Детские хвалы"];
   const filtered = filter === "all" ? tracks : tracks.filter(t => t.genre === filter);
+  const filteredUploaded = filter === "all" ? uploadedFiles : [];
 
   const handleDelete = (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,11 +81,36 @@ function LibrarySection({ onPlay }: { onPlay: (id: number) => void }) {
     }
   };
 
+  const handleDeleteUploaded = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmDeleteUploaded === id) {
+      onDeleteUploaded(id);
+      setConfirmDeleteUploaded(null);
+    } else {
+      setConfirmDeleteUploaded(id);
+    }
+  };
+
+  const fileTypeIcon: Record<string, string> = {
+    "Аудио": "Music",
+    "Видео": "Video",
+    "Текст": "FileText",
+    "Ноты": "Music2",
+  };
+  const fileTypeColor: Record<string, string> = {
+    "Аудио": "text-accent",
+    "Видео": "text-blue-400",
+    "Текст": "text-yellow-400",
+    "Ноты": "text-purple-400",
+  };
+
+  const totalCount = tracks.length + uploadedFiles.length;
+
   return (
     <div className="animate-fade-in">
       <div className="mb-6">
         <h2 className="text-2xl font-semibold mb-1">Библиотека</h2>
-        <p className="text-muted-foreground text-sm">{tracks.length} треков</p>
+        <p className="text-muted-foreground text-sm">{totalCount} файлов</p>
       </div>
 
       <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide pb-1">
@@ -123,6 +163,43 @@ function LibrarySection({ onPlay }: { onPlay: (id: number) => void }) {
             </div>
           </div>
         ))}
+
+        {filteredUploaded.map((file, idx) => (
+          <div
+            key={`uploaded-${file.id}`}
+            className="group flex items-center gap-4 p-3 rounded-xl hover:bg-secondary transition-all cursor-pointer"
+            style={{ animationDelay: `${(filtered.length + idx) * 0.05}s` }}
+          >
+            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+              <Icon name={fileTypeIcon[file.fileType] ?? "File"} size={16} className={fileTypeColor[file.fileType] ?? "text-muted-foreground"} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm truncate">{file.name}</p>
+              <p className="text-muted-foreground text-xs truncate">{file.fileType} · {file.size}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className={`text-xs px-1.5 py-0.5 rounded ${fileTypeColor[file.fileType] ?? ""} bg-current/10`}
+                style={{ backgroundColor: "transparent", border: "1px solid currentColor", opacity: 0.7 }}>
+                {file.fileType.toLowerCase()}
+              </span>
+              <button
+                onClick={(e) => handleDeleteUploaded(file.id, e)}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
+                  confirmDeleteUploaded === file.id
+                    ? "bg-destructive text-destructive-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                }`}
+                title={confirmDeleteUploaded === file.id ? "Нажмите ещё раз для подтверждения" : "Удалить"}
+              >
+                <Icon name={confirmDeleteUploaded === file.id ? "Check" : "Trash2"} size={13} />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {filtered.length === 0 && filteredUploaded.length === 0 && (
+          <p className="text-center text-muted-foreground text-sm py-10">Нет файлов в этой категории</p>
+        )}
       </div>
     </div>
   );
@@ -298,32 +375,43 @@ function PlayerSection({ trackId }: { trackId: number }) {
   );
 }
 
-function UploadSection() {
+function UploadSection({ uploadedFiles, onFilesAdded, onFileRemove }: {
+  uploadedFiles: UploadedFile[];
+  onFilesAdded: (files: UploadedFile[]) => void;
+  onFileRemove: (id: number) => void;
+}) {
   const [dragging, setDragging] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; size: string; type: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [acceptFilter, setAcceptFilter] = useState("audio/*,video/*,.txt,.pdf,.docx,.xml");
 
-  const types = [
-    { icon: "Music", label: "Аудио", ext: "MP3, WAV, FLAC", color: "text-accent" },
-    { icon: "Video", label: "Видео", ext: "MP4, MOV", color: "text-blue-400" },
-    { icon: "FileText", label: "Текст", ext: "TXT, PDF, DOCX", color: "text-yellow-400" },
-    { icon: "Music2", label: "Ноты", ext: "MusicXML, PDF", color: "text-purple-400" },
+  const types: { icon: string; label: string; ext: string; color: string; accept: string; fileType: UploadedFile["fileType"] }[] = [
+    { icon: "Music", label: "Аудио", ext: "MP3, WAV, FLAC", color: "text-accent", accept: "audio/*", fileType: "Аудио" },
+    { icon: "Video", label: "Видео", ext: "MP4, MOV", color: "text-blue-400", accept: "video/*", fileType: "Видео" },
+    { icon: "FileText", label: "Текст", ext: "TXT, PDF, DOCX", color: "text-yellow-400", accept: ".txt,.pdf,.docx", fileType: "Текст" },
+    { icon: "Music2", label: "Ноты", ext: "MusicXML, PDF", color: "text-purple-400", accept: ".xml,.pdf", fileType: "Ноты" },
   ];
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
-    const newFiles = Array.from(files).map(f => ({
+  const parseFiles = (fileList: FileList | null, fileType?: UploadedFile["fileType"]): UploadedFile[] => {
+    if (!fileList) return [];
+    return Array.from(fileList).map((f, i) => ({
+      id: Date.now() + i,
       name: f.name,
       size: f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} МБ` : `${(f.size / 1024).toFixed(0)} КБ`,
-      type: f.type.startsWith("audio") ? "Аудио" : f.type.startsWith("video") ? "Видео" : "Документ",
+      fileType: fileType ?? (f.type.startsWith("audio") ? "Аудио" : f.type.startsWith("video") ? "Видео" : "Текст"),
+      genre: "",
+      url: URL.createObjectURL(f),
     }));
-    setUploadedFiles(prev => [...prev, ...newFiles]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    handleFiles(e.dataTransfer.files);
+    onFilesAdded(parseFiles(e.dataTransfer.files));
+  };
+
+  const openDialog = (accept: string) => {
+    setAcceptFilter(accept);
+    setTimeout(() => fileInputRef.current?.click(), 50);
   };
 
   return (
@@ -337,16 +425,16 @@ function UploadSection() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept="audio/*,video/*,.txt,.pdf,.docx,.xml"
+        accept={acceptFilter}
         className="hidden"
-        onChange={e => handleFiles(e.target.files)}
+        onChange={e => { onFilesAdded(parseFiles(e.target.files)); e.target.value = ""; }}
       />
 
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => openDialog("audio/*,video/*,.txt,.pdf,.docx,.xml")}
         className={`border-2 border-dashed rounded-2xl p-10 text-center mb-6 transition-all cursor-pointer ${
           dragging ? "border-accent bg-accent/5" : "border-border hover:border-accent hover:bg-accent/5"
         }`}
@@ -363,21 +451,41 @@ function UploadSection() {
         </span>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {types.map(type => (
+          <button
+            key={type.label}
+            onClick={() => openDialog(type.accept)}
+            className="bg-card border border-border rounded-2xl p-4 flex items-center gap-3 hover:border-accent hover:bg-accent/5 transition-all text-left"
+          >
+            <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center flex-shrink-0">
+              <Icon name={type.icon} size={18} className={type.color} />
+            </div>
+            <div>
+              <p className="font-medium text-sm">{type.label}</p>
+              <p className="text-xs text-muted-foreground">{type.ext}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+
       {uploadedFiles.length > 0 && (
-        <div className="bg-card border border-border rounded-2xl p-4 mb-6">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">Загружено</h3>
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">
+            Загружено · {uploadedFiles.length}
+          </h3>
           <div className="space-y-2">
-            {uploadedFiles.map((f, i) => (
-              <div key={i} className="flex items-center gap-3">
+            {uploadedFiles.map(f => (
+              <div key={f.id} className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
                   <Icon name="FileCheck" size={14} className="text-accent" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{f.name}</p>
-                  <p className="text-xs text-muted-foreground">{f.type} · {f.size}</p>
+                  <p className="text-xs text-muted-foreground">{f.fileType} · {f.size}</p>
                 </div>
                 <button
-                  onClick={() => setUploadedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                  onClick={() => onFileRemove(f.id)}
                   className="text-muted-foreground hover:text-destructive transition-colors"
                 >
                   <Icon name="X" size={14} />
@@ -387,20 +495,6 @@ function UploadSection() {
           </div>
         </div>
       )}
-
-      <div className="grid grid-cols-2 gap-3">
-        {types.map(type => (
-          <div key={type.label} className="bg-card border border-border rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:border-muted-foreground transition-all">
-            <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center flex-shrink-0">
-              <Icon name={type.icon} size={18} className={type.color} />
-            </div>
-            <div>
-              <p className="font-medium text-sm">{type.label}</p>
-              <p className="text-xs text-muted-foreground">{type.ext}</p>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -608,6 +702,15 @@ export default function Index() {
   const [prevSection, setPrevSection] = useState<Section | null>(null);
   const [activeTrackId, setActiveTrackId] = useState(1);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+
+  const handleFilesAdded = (files: UploadedFile[]) => {
+    setUploadedFiles(prev => [...prev, ...files]);
+  };
+
+  const handleFileRemove = (id: number) => {
+    setUploadedFiles(prev => prev.filter(f => f.id !== id));
+  };
 
   useEffect(() => {
     const root = document.documentElement;
@@ -667,9 +770,9 @@ export default function Index() {
       </div>
 
       <div className="flex-1 max-w-2xl mx-auto w-full px-4 pt-24 pb-28">
-        {section === "library" && <LibrarySection onPlay={handlePlay} />}
+        {section === "library" && <LibrarySection onPlay={handlePlay} uploadedFiles={uploadedFiles} onDeleteUploaded={handleFileRemove} />}
         {section === "player" && <PlayerSection trackId={activeTrackId} />}
-        {section === "upload" && <UploadSection />}
+        {section === "upload" && <UploadSection uploadedFiles={uploadedFiles} onFilesAdded={handleFilesAdded} onFileRemove={handleFileRemove} />}
         {section === "bookmarks" && <BookmarksSection onPlay={handlePlay} />}
         {section === "profile" && <ProfileSection />}
         {section === "settings" && <SettingsSection theme={theme} onThemeChange={setTheme} />}
