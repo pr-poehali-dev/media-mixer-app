@@ -444,7 +444,7 @@ function ProfileSection() {
   );
 }
 
-function SettingsSection() {
+function SettingsSection({ theme, onThemeChange }: { theme: "dark" | "light"; onThemeChange: (t: "dark" | "light") => void }) {
   const [bgPlay, setBgPlay] = useState(true);
   const [autoSync, setAutoSync] = useState(true);
   const [showChords, setShowChords] = useState(true);
@@ -461,6 +461,24 @@ function SettingsSection() {
       <div className="mb-6">
         <h2 className="text-2xl font-semibold mb-1">Настройки</h2>
         <p className="text-muted-foreground text-sm">Управление параметрами приложения</p>
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-5 mb-6">
+        <p className="font-medium text-sm mb-3">Тема оформления</p>
+        <div className="flex gap-2">
+          {(["dark", "light"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => onThemeChange(t)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm transition-all ${
+                theme === t ? "bg-accent text-accent-foreground font-medium" : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon name={t === "dark" ? "Moon" : "Sun"} size={15} />
+              {t === "dark" ? "Тёмная" : "Светлая"}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="space-y-3 mb-6">
@@ -535,6 +553,16 @@ export default function Index() {
   const [section, setSection] = useState<Section>("library");
   const [prevSection, setPrevSection] = useState<Section | null>(null);
   const [activeTrackId, setActiveTrackId] = useState(1);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, [theme]);
 
   const handlePlay = (id: number) => {
     setActiveTrackId(id);
@@ -590,7 +618,7 @@ export default function Index() {
         {section === "upload" && <UploadSection />}
         {section === "bookmarks" && <BookmarksSection onPlay={handlePlay} />}
         {section === "profile" && <ProfileSection />}
-        {section === "settings" && <SettingsSection />}
+        {section === "settings" && <SettingsSection theme={theme} onThemeChange={setTheme} />}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-t border-border">
