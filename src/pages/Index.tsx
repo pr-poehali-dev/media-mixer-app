@@ -7,11 +7,11 @@ type Section = "library" | "player" | "upload" | "bookmarks" | "profile" | "sett
 type SyncTab = "lyrics" | "chords" | "notes";
 
 const TRACKS = [
-  { id: 1, title: "Весенний вечер", artist: "Алексей Краснов", duration: "3:42", genre: "Акустика", hasLyrics: true, hasChords: true, hasNotes: false },
-  { id: 2, title: "Городской ритм", artist: "Море внутри", duration: "4:15", genre: "Джаз", hasLyrics: true, hasChords: false, hasNotes: true },
-  { id: 3, title: "Тишина после", artist: "Лира", duration: "5:03", genre: "Классика", hasLyrics: false, hasChords: true, hasNotes: true },
-  { id: 4, title: "Полночный бриз", artist: "Северный ветер", duration: "3:28", genre: "Электроника", hasLyrics: true, hasChords: true, hasNotes: false },
-  { id: 5, title: "Утро в горах", artist: "Вершина", duration: "6:11", genre: "Фолк", hasLyrics: false, hasChords: false, hasNotes: true },
+  { id: 1, title: "Весенний вечер", artist: "Алексей Краснов", duration: "3:42", genre: "Хвалы", hasLyrics: true, hasChords: true, hasNotes: false },
+  { id: 2, title: "Городской ритм", artist: "Море внутри", duration: "4:15", genre: "Хвалы", hasLyrics: true, hasChords: false, hasNotes: true },
+  { id: 3, title: "Тишина после", artist: "Лира", duration: "5:03", genre: "Детские хвалы", hasLyrics: false, hasChords: true, hasNotes: true },
+  { id: 4, title: "Полночный бриз", artist: "Северный ветер", duration: "3:28", genre: "Детские хвалы", hasLyrics: true, hasChords: true, hasNotes: false },
+  { id: 5, title: "Утро в горах", artist: "Вершина", duration: "6:11", genre: "Хвалы", hasLyrics: false, hasChords: false, hasNotes: true },
 ];
 
 const LYRICS = [
@@ -53,7 +53,7 @@ function LibrarySection({ onPlay }: { onPlay: (id: number) => void }) {
   const [filter, setFilter] = useState("all");
   const [tracks, setTracks] = useState(TRACKS);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-  const genres = ["all", "Акустика", "Джаз", "Классика", "Электроника", "Фолк"];
+  const genres = ["all", "Хвалы", "Детские хвалы"];
   const filtered = filter === "all" ? tracks : tracks.filter(t => t.genre === filter);
 
   const handleDelete = (id: number, e: React.MouseEvent) => {
